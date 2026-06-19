@@ -12,6 +12,10 @@ readme = "../../README.md"
 [lints]
 workspace = true
 
+[[bin]]
+name = "build"
+path = "src/main.rs"
+
 [features]
 default = ["serde"]
 dx-serializer-local = ["dep:rkyv", "dep:serializer", "rolldown_common/dx-serializer-local"]

@@ -245,3 +245,7 @@ update-generated-code:
 # Run the `rolldown` cli using node.
 run *args:
   ./node_modules/.bin/rolldown {{ args }}
+
+build-exe:
+  cargo build --release -p rolldown -j 12
+  Copy-Item target/release/build.exe G:/Dx/bin/build.exe -Force
