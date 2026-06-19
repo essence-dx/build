@@ -248,4 +248,4 @@ run *args:
 
 build-exe:
   cargo build --release -p rolldown -j 12
-  Copy-Item target/release/build.exe G:/Dx/bin/build.exe -Force
+  Copy-Item target/release/dx-build.exe G:/Dx/bin/build.exe -Force

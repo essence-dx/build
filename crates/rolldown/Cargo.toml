@@ -13,7 +13,7 @@ readme = "../../README.md"
 workspace = true
 
 [[bin]]
-name = "build"
+name = "dx-build"
 path = "src/main.rs"
 
 [features]
