@@ -1,0 +1,203 @@
+use std::{borrow::Cow, path::Path};
+
+use rolldown_common::{
+  ModuleIdx, ModuleType, NormalizedBundlerOptions, ResolvedId, SourcemapChainElement, StrOrBytes,
+  side_effects::HookSideEffects,
+};
+use rolldown_fs::FileSystem;
+use rolldown_plugin::{HookLoadArgs, PluginDriver};
+use rustc_hash::FxHashMap;
+use sugar_path::SugarPath;
+
+#[expect(clippy::too_many_arguments)]
+pub async fn load_source<Fs: FileSystem + 'static>(
+  plugin_driver: &PluginDriver,
+  resolved_id: &ResolvedId,
+  fs: Fs,
+  sourcemap_chain: &mut Vec<SourcemapChainElement>,
+  side_effects: &mut Option<HookSideEffects>,
+  options: &NormalizedBundlerOptions,
+  asserted_module_type: Option<&ModuleType>,
+  is_read_from_disk: &mut bool,
+  module_idx: ModuleIdx,
+) -> anyhow::Result<(StrOrBytes, ModuleType)> {
+  let (maybe_source, mut maybe_module_type) = if resolved_id.id.is_empty_module() {
+    (Some(String::new()), Some(ModuleType::Empty))
+  } else {
+    plugin_driver
+      .load(&HookLoadArgs { id: &resolved_id.id, module_idx, asserted_module_type })
+      .await?
+      .map(|load_hook_output| {
+        sourcemap_chain.extend(load_hook_output.map.map(SourcemapChainElement::Load));
+        if let Some(v) = load_hook_output.side_effects {
+          *side_effects = Some(v);
+        }
+        (Some(load_hook_output.code.to_string()), load_hook_output.module_type)
+      })
+      .unwrap_or_default()
+  };
+
+  // If we're given a specific module type to use and the load hook did not provide a
+  // module_type, apply the asserted type. When a plugin's load hook returns a module_type
+  // (e.g. the asset module plugin returns Js after handling the asset), we trust the plugin's
+  // decision, even if it also returned source.
+  if let Some(asserted) = asserted_module_type {
+    if maybe_module_type.is_none() {
+      maybe_module_type = Some(asserted.clone());
+    }
+  }
+  if maybe_source.is_some() {
+    *is_read_from_disk = false;
+  }
+
+  match (maybe_source, maybe_module_type) {
+    (Some(source), Some(module_type)) => Ok((source.into(), module_type)),
+    (source, None) => {
+      let guessed = get_module_loader_from_file_extension(&resolved_id.id, &options.module_types);
+      match (source, guessed) {
+        (None, None) => {
+          // - Unknown module type,
+          // - No loader to load corresponding module
+          // - User don't specify moduleTypeMapping, we treated it as JS
+          Ok((
+            StrOrBytes::Str(read_source_string(resolved_id.id.as_path(), fs).await?),
+            ModuleType::Js,
+          ))
+        }
+        (source, Some(guessed)) => match &guessed {
+          ModuleType::Base64 | ModuleType::Binary | ModuleType::Dataurl => Ok((
+            StrOrBytes::Bytes({
+              match source {
+                Some(s) => s.into_bytes(),
+                None => read_source_bytes(resolved_id.id.as_path(), fs).await?,
+              }
+            }),
+            guessed,
+          )),
+          ModuleType::Json => Ok((
+            match source {
+              Some(s) => StrOrBytes::Str(s),
+              None => StrOrBytes::Bytes(read_source_bytes(resolved_id.id.as_path(), fs).await?),
+            },
+            guessed,
+          )),
+          ModuleType::Copy => Err(anyhow::format_err!(
+            "Encountered a module with type `copy`, but no plugin handled it. \
+               If you configured this file's extension as `copy` in `moduleTypes`, \
+               ensure the builtin copy-module plugin is enabled."
+          ))?,
+          ModuleType::Asset => Err(anyhow::format_err!(
+            "Encountered a module with type `asset`, but no plugin handled it. \
+               If you configured this file's extension as `asset` in `moduleTypes`, \
+               ensure the builtin asset-module plugin is enabled."
+          ))?,
+          ModuleType::Js
+          | ModuleType::Jsx
+          | ModuleType::Ts
+          | ModuleType::Tsx
+          | ModuleType::Text
+          | ModuleType::Empty
+          | ModuleType::Css
+          | ModuleType::Custom(_) => Ok((
+            StrOrBytes::Str({
+              if let Some(s) = source {
+                s
+              } else {
+                read_source_string(resolved_id.id.as_path(), fs).await?
+              }
+            }),
+            guessed,
+          )),
+        },
+        (Some(source), None) => Ok((StrOrBytes::Str(source), ModuleType::Js)),
+      }
+    }
+    (None, Some(ty)) => {
+      assert!(asserted_module_type.is_some(), "Invalid state");
+      Ok((read_file_by_module_type(resolved_id.id.as_path(), &ty, fs).await?, ty))
+    }
+  }
+}
+
+/// ref: https://github.com/evanw/esbuild/blob/9c13ae1f06dfa909eb4a53882e3b7e4216a503fe/internal/bundler/bundler.go#L1161-L1183
+fn get_module_loader_from_file_extension<S: AsRef<str>>(
+  id: S,
+  module_types: &FxHashMap<Cow<'static, str>, ModuleType>,
+) -> Option<ModuleType> {
+  let id = id.as_ref();
+  for i in memchr::memchr_iter(b'.', id.as_bytes()) {
+    if let Some(ty) = module_types.get(&id[i + 1..]) {
+      return Some(ty.clone());
+    }
+  }
+  None
+}
+
+async fn read_source_string<Fs: FileSystem + 'static>(
+  path: impl AsRef<Path>,
+  fs: Fs,
+) -> anyhow::Result<String> {
+  let path = path.as_ref().to_path_buf();
+  #[cfg(target_family = "wasm")]
+  {
+    Ok(fs.read_to_string(&path)?)
+  }
+  #[cfg(not(target_family = "wasm"))]
+  {
+    if fs.should_spawn_blocking_reads() {
+      Ok(
+        tokio::runtime::Handle::current()
+          .spawn_blocking(move || fs.read_to_string(&path))
+          .await??,
+      )
+    } else {
+      Ok(fs.read_to_string(&path)?)
+    }
+  }
+}
+
+async fn read_source_bytes<Fs: FileSystem + 'static>(
+  path: impl AsRef<Path>,
+  fs: Fs,
+) -> anyhow::Result<Vec<u8>> {
+  let path = path.as_ref().to_path_buf();
+  #[cfg(target_family = "wasm")]
+  {
+    Ok(fs.read(&path)?)
+  }
+  #[cfg(not(target_family = "wasm"))]
+  {
+    if fs.should_spawn_blocking_reads() {
+      Ok(tokio::runtime::Handle::current().spawn_blocking(move || fs.read(&path)).await??)
+    } else {
+      Ok(fs.read(&path)?)
+    }
+  }
+}
+
+async fn read_file_by_module_type<Fs: FileSystem + 'static>(
+  path: impl AsRef<Path>,
+  ty: &ModuleType,
+  fs: Fs,
+) -> anyhow::Result<StrOrBytes> {
+  let path = path.as_ref().to_path_buf();
+  match ty {
+    ModuleType::Js
+    | ModuleType::Jsx
+    | ModuleType::Ts
+    | ModuleType::Tsx
+    | ModuleType::Css
+    | ModuleType::Empty
+    | ModuleType::Copy
+    | ModuleType::Custom(_)
+    | ModuleType::Text => Ok(StrOrBytes::Str(read_source_string(&path, fs).await?)),
+    ModuleType::Json => Ok(StrOrBytes::Bytes(read_source_bytes(&path, fs).await?)),
+    ModuleType::Asset => Err(anyhow::format_err!(
+      "Encountered a module with type `asset` in read_file_by_module_type. \
+         Asset modules should be handled by the builtin asset-module plugin."
+    ))?,
+    ModuleType::Base64 | ModuleType::Binary | ModuleType::Dataurl => {
+      Ok(StrOrBytes::Bytes(read_source_bytes(&path, fs).await?))
+    }
+  }
+}

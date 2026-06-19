@@ -1,0 +1,43 @@
+# DX GitHub Actions temporarily disabled.
+# Controlled deactivation requested by essencefromexistence to preserve limited GitHub Actions minutes.
+# Keep this workflow disabled until essencefromexistence explicitly re-enables GitHub Actions for this repository.
+name: Benchmark Receipt
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/bench/receipt/**'
+      - 'packages/bench/package.json'
+      - '.github/workflows/benchmark-node.yml'
+      - '.github/workflows/benchmark-receipt.yml'
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'packages/bench/receipt/**'
+      - 'packages/bench/package.json'
+      - '.github/workflows/benchmark-node.yml'
+      - '.github/workflows/benchmark-receipt.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  source-receipt:
+    name: Source Receipt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+
+      - uses: voidzero-dev/setup-vp@ca1c46663915d6c1042ae23bd39ab85718bfb0fa # v1.10.0
+        with:
+          node-version: 22
+          cache: false
+
+      - name: Run receipt contract tests
+        run: node --test packages/bench/receipt/source-receipt.test.ts packages/bench/receipt/governed-execution-gate.test.ts packages/bench/receipt/lighthouse-package-contract.test.ts

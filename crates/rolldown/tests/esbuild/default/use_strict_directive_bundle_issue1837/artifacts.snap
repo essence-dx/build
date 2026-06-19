@@ -1,0 +1,44 @@
+---
+source: crates/rolldown_testing/src/integration_test.rs
+---
+# warnings
+
+## MISSING_GLOBAL_NAME
+
+```text
+[MISSING_GLOBAL_NAME] No name was provided for external module "node:assert" in "output.globals" – guessing "node_assert".
+
+```
+
+## MISSING_GLOBAL_NAME
+
+```text
+[MISSING_GLOBAL_NAME] No name was provided for external module "process" in "output.globals" – guessing "process".
+
+```
+
+# Assets
+
+## entry.js
+
+```js
+(function(process, node_assert) {
+	// HIDDEN [\0rolldown/runtime.js]
+	process = __toESM(process);
+	node_assert = __toESM(node_assert);
+	//#region shims.js
+	var init_shims = __esmMin((() => {}));
+	//#endregion
+	//#region cjs.js
+	var require_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
+		init_shims();
+		exports.foo = process.default;
+	}));
+	//#endregion
+	//#region entry.js
+	init_shims();
+	node_assert.default.deepEqual(require_cjs(), { foo: process.default });
+	//#endregion
+})(process, node_assert);
+
+```
