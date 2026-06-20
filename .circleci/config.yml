@@ -128,6 +128,8 @@ jobs:
           command: |
             choco install gh -y --no-progress --limit-output
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            if (-not $env:GH_TOKEN -and $env:DX_GITHUB_TOKEN) { $env:GH_TOKEN = $env:DX_GITHUB_TOKEN }
+            $proj = "build"
             $tag = "windows"
             gh release create $tag --repo essence-dx/$proj --title "Windows Release" --target $env:CIRCLE_SHA1 2>$null; $LASTEXITCODE = 0
             gh release upload $tag dist\*.zip --repo essence-dx/$proj --clobber
