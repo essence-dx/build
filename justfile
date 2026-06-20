@@ -249,5 +249,7 @@ run *args:
 build-exe:
   cargo build --release -p rolldown -j 12
   New-Item -ItemType Directory -Force -Path G:\Dx\bin | Out-Null
-    Copy-Item target/release/dx-build.exe G:/Dx/bin/build.exe -Force
+  Copy-Item target/release/dx-build.exe G:/Dx/bin/build.exe -Force
+
+
 
