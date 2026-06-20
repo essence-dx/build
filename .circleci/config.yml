@@ -131,7 +131,7 @@ jobs:
             $env:GH_TOKEN = [System.Environment]::GetEnvironmentVariable("CIRCLECI_GH_TOKEN")
             $proj = "build"
             $tag = "windows"
-            gh release create $tag --repo essence-dx/$proj --title "Windows Release" --target $env:CIRCLE_SHA1 || echo "Release may already exist"
+            gh release create $tag --repo essence-dx/$proj --title "Windows Release" --target $env:CIRCLE_SHA1 2>$null; $LASTEXITCODE = 0
             gh release upload $tag dist\*.zip --repo essence-dx/$proj --clobber
 
 
@@ -197,6 +197,7 @@ workflows:
 # workflows:
 #   linux-release: ...
 #   macos-release: ...
+
 
 
 
