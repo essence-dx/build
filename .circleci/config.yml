@@ -128,8 +128,8 @@ jobs:
           command: |
             choco install gh -y --no-progress --limit-output
             $tag = "windows"
-            C:\ProgramData\chocolatey\bin\gh.exe release create $tag --repo essence-dx/build --title "Windows build" --notes "CI Windows artifact (dx-build package)" --target $env:CIRCLE_SHA1 2>$null; $LASTEXITCODE = 0
-            C:\ProgramData\chocolatey\bin\gh.exe release upload $tag dist\dx-build-windows-*.zip --repo essence-dx/build --clobber
+            & "C:\ProgramData\chocolatey\bin\gh.exe" release create $tag --repo essence-dx/build --title "Windows build" --notes "CI Windows artifact (dx-build package)" --target $env:CIRCLE_SHA1 2>$null; $LASTEXITCODE = 0
+            & "C:\ProgramData\chocolatey\bin\gh.exe" release upload $tag dist\dx-build-windows-*.zip --repo essence-dx/build --clobber
 
 
 #  macos-release:
@@ -194,6 +194,7 @@ workflows:
 # workflows:
 #   linux-release: ...
 #   macos-release: ...
+
 
 
 
