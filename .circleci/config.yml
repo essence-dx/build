@@ -4,7 +4,7 @@ orbs:
   win: circleci/windows@5.0
 
 parameters:
-  windows_release_artifacts:
+  release_artifacts:
     type: boolean
     default: false
 
@@ -183,7 +183,7 @@ workflows:
                 - main
                 - dev
   windows-release:
-    when: << pipeline.parameters.windows_release_artifacts >>
+    when: << pipeline.parameters.release_artifacts >>
     jobs:
       - windows-release
       # - macos-release
@@ -194,3 +194,4 @@ workflows:
 # workflows:
 #   linux-release: ...
 #   macos-release: ...
+
