@@ -60,7 +60,7 @@ commands:
               }
             }
 
-            clone_dx_dependency "serializer" "dx-serializer"
+            clone_dx_dependency "serializer" "serializer"
 
 jobs:
   linux-check:
@@ -128,7 +128,7 @@ jobs:
           command: |
             choco install gh -y --no-progress --limit-output
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-            if (-not $env:GH_TOKEN -and $env:DX_GITHUB_TOKEN) { $env:GH_TOKEN = $env:DX_GITHUB_TOKEN }
+            $env:GH_TOKEN = $env:CIRCLECI_GH_TOKEN
             $proj = "build"
             $tag = "windows"
             gh release create $tag --repo essence-dx/$proj --title "Windows Release" --target $env:CIRCLE_SHA1 2>$null; $LASTEXITCODE = 0
@@ -197,6 +197,7 @@ workflows:
 # workflows:
 #   linux-release: ...
 #   macos-release: ...
+
 
 
 
